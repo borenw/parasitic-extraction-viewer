@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parasitic Extraction (.cir) Table Viewer</title>
+<style>
+  :root{
+    --blue:#0052CC; --blue-dark:#172B4D; --blue-mid:#0065FF; --blue-light:#DEEBFF;
+    --blue-lighter:#F4F8FF; --border:#DFE1E6; --ink:#172B4D; --sub:#5E6C84;
+    --green:#36B37E; --amber:#FFAB00; --red:#DE350B;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:#fff;color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    font-size:14px;line-height:1.5;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 20px 80px;}
+  /* Banners */
+  .hero{background:linear-gradient(135deg,#0052CC,#0747A6);color:#fff;padding:22px 24px;border-radius:0 0 6px 6px;margin-bottom:20px;box-shadow:0 1px 3px rgba(9,30,66,.25);}
+  .hero h1{margin:0;font-size:22px;font-weight:600;letter-spacing:.2px;}
+  .hero p{margin:6px 0 0;opacity:.9;font-size:13px;}
+  .banner{background:var(--blue);color:#fff;padding:9px 14px;border-radius:4px 4px 0 0;font-weight:600;font-size:15px;display:flex;align-items:center;gap:8px;}
+  .banner .count{margin-left:auto;background:rgba(255,255,255,.2);padding:1px 10px;border-radius:12px;font-size:12px;font-weight:600;}
+  /* Cards */
+  .card{border:1px solid var(--border);border-radius:6px;margin-bottom:26px;overflow:hidden;background:#fff;}
+  .card-body{padding:14px;}
+  /* Index */
+  .index{background:var(--blue-lighter);border:1px solid var(--blue-light);border-radius:6px;padding:14px 18px;margin-bottom:22px;}
+  .index h3{margin:0 0 8px;font-size:13px;color:var(--blue);text-transform:uppercase;letter-spacing:.5px;}
+  .index ul{margin:0;padding-left:20px;}
+  .index li{margin:3px 0;}
+  .index a{color:var(--blue);text-decoration:none;font-weight:500;}
+  .index a:hover{text-decoration:underline;}
+  .index .sub{color:var(--sub);font-weight:400;font-size:12px;}
+  /* Input */
+  .drop{border:2px dashed #B3C4E6;border-radius:8px;padding:26px;text-align:center;background:var(--blue-lighter);cursor:pointer;transition:.15s;}
+  .drop.hover{background:var(--blue-light);border-color:var(--blue);}
+  .drop strong{color:var(--blue);}
+  .controls-row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end;margin-top:14px;}
+  .fld{display:flex;flex-direction:column;gap:3px;}
+  .fld label{font-size:11px;color:var(--sub);font-weight:600;text-transform:uppercase;letter-spacing:.4px;}
+  input[type=text],input[type=number],textarea{border:1px solid var(--border);border-radius:4px;padding:6px 8px;font-size:13px;font-family:inherit;color:var(--ink);}
+  input[type=text]:focus,input[type=number]:focus,textarea:focus{outline:none;border-color:var(--blue-mid);box-shadow:0 0 0 2px rgba(0,101,255,.15);}
+  textarea{width:100%;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;resize:vertical;}
+  .btn{background:var(--blue);color:#fff;border:none;border-radius:4px;padding:8px 16px;font-size:13px;font-weight:600;cursor:pointer;}
+  .btn:hover{background:#0747A6;}
+  .btn.ghost{background:#fff;color:var(--blue);border:1px solid var(--blue);}
+  .btn.ghost:hover{background:var(--blue-lighter);}
+  .btn.sm{padding:5px 11px;font-size:12px;}
+  /* Summary tiles */
+  .tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:22px;}
+  .tile{border:1px solid var(--border);border-radius:6px;padding:12px 14px;background:#fff;}
+  .tile .n{font-size:24px;font-weight:700;color:var(--blue);}
+  .tile .l{font-size:12px;color:var(--sub);margin-top:2px;}
+  /* Table */
+  .tbl-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;margin-bottom:12px;}
+  table{border-collapse:collapse;width:100%;font-size:13px;}
+  th,td{border:1px solid var(--border);padding:6px 9px;text-align:left;vertical-align:middle;}
+  th{background:var(--blue-light);color:var(--blue-dark);font-weight:600;cursor:pointer;user-select:none;white-space:nowrap;position:sticky;top:0;}
+  th .arrow{opacity:.4;font-size:10px;margin-left:3px;}
+  th.sorted .arrow{opacity:1;color:var(--blue);}
+  tr:nth-child(even) td{background:#FAFBFC;}
+  tr:hover td{background:var(--blue-lighter);}
+  td.rank{text-align:center;font-weight:700;width:44px;}
+  td.net{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;}
+  .valcell{position:relative;min-width:150px;}
+  .valbar{position:absolute;left:0;top:0;bottom:0;opacity:.16;border-radius:2px;}
+  .valtxt{position:relative;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-weight:600;}
+  .medal{display:inline-block;}
+  .pie-row{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-bottom:14px;padding:10px;background:var(--blue-lighter);border-radius:6px;border:1px solid var(--blue-light);}
+  .legend{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:2px 14px;flex:1;min-width:260px;}
+  .legend .li{display:flex;align-items:center;gap:6px;font-size:12px;}
+  .sw{width:11px;height:11px;border-radius:2px;flex-shrink:0;}
+  .legend .nm{font-family:ui-monospace,monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .legend .pc{margin-left:auto;color:var(--sub);font-weight:600;}
+  details.export{margin-top:12px;border:1px solid var(--border);border-radius:6px;}
+  details.export summary{padding:8px 12px;background:var(--blue-lighter);cursor:pointer;font-weight:600;color:var(--blue);border-radius:6px;}
+  details.export[open] summary{border-bottom:1px solid var(--border);border-radius:6px 6px 0 0;}
+  .export-body{padding:12px;}
+  .radio-row{display:flex;gap:16px;margin-bottom:8px;font-size:13px;align-items:center;}
+  .muted{color:var(--sub);font-size:12px;}
+  .empty{padding:30px;text-align:center;color:var(--sub);}
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--blue-dark);color:#fff;padding:10px 18px;border-radius:6px;font-size:13px;opacity:0;transition:.25s;pointer-events:none;z-index:99;}
+  .toast.show{opacity:1;}
+  .note{background:#FFFAE6;border:1px solid #FFE380;border-radius:6px;padding:10px 12px;font-size:12px;color:#5E4B00;margin-top:10px;}
+  code.k{background:#EBECF0;border-radius:3px;padding:1px 5px;font-size:12px;}
+</style>
+</head>
+<body>
+<div class="hero">
+  <h1>⚡ Parasitic Extraction (.cir) Table Viewer</h1>
+  <p>Load an extraction netlist → get sortable/filterable tables + copy-paste-ready Confluence markup. Mutual&nbsp;L · Self&nbsp;L · Mutual&nbsp;C · Self&nbsp;C-to-GND.</p>
+</div>
+
+<div class="wrap">
+
+  <!-- INPUT -->
+  <div class="card" id="input-card">
+    <div class="banner">📥 Input</div>
+    <div class="card-body">
+      <div class="drop" id="drop">
+        <div style="font-size:26px;">📄</div>
+        <div><strong>Drop a .cir file here</strong> or click to browse</div>
+        <div class="muted" style="margin-top:4px;">…or paste netlist text below</div>
+        <input type="file" id="file" accept=".cir,.sp,.spi,.net,.txt" style="display:none;">
+      </div>
+      <div style="margin-top:12px;">
+        <textarea id="paste" rows="5" placeholder="* paste SPICE extraction netlist here...
+L1 VIN SW 2.2nH
+K12 L1 L2 0.45
+C1 SW1 SW2 12.5fF
+Cg1 SW 0 120fF"></textarea>
+      </div>
+      <div class="controls-row">
+        <div class="fld">
+          <label>Ground nets (comma-sep, case-insensitive)</label>
+          <input type="text" id="gnd" value="0, gnd, gnd!, vss, vss!, dgnd, agnd" style="width:340px;">
+        </div>
+        <button class="btn" id="parseBtn">▶ Parse netlist</button>
+        <button class="btn ghost sm" id="sampleBtn">Load sample</button>
+      </div>
+      <div class="note" id="parseNote" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- INDEX -->
+  <div class="index" id="index" style="display:none;">
+    <h3>📑 Index</h3>
+    <ul>
+      <li><a href="#sum">Summary</a> <span class="sub">— element counts</span></li>
+      <li><a href="#t1">1 · 🔗 Mutual Inductance</a> <span class="sub">— K couplings → M = k·√(Lₐ·L_b)</span></li>
+      <li><a href="#t2">2 · 🌀 Self Inductance</a> <span class="sub">— L elements</span></li>
+      <li><a href="#t3">3 · ⚡ Mutual Capacitance</a> <span class="sub">— coupling caps between nets</span></li>
+      <li><a href="#t4">4 · ⏚ Self Capacitance to GND</a> <span class="sub">— caps to ground</span></li>
+    </ul>
+  </div>
+
+  <!-- SUMMARY -->
+  <div id="sum"></div>
+  <!-- TABLES -->
+  <div id="tables"></div>
+
+  <footer style="margin-top:40px;padding-top:16px;border-top:1px solid var(--border);text-align:center;color:var(--sub);font-size:12.5px;">
+    <a href="https://borenw.github.io/" style="color:var(--blue);text-decoration:none;font-weight:600;">Page 35 · Bo's Engineering Curriculum</a>
+  </footer>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ================= PARSER ================= */
+var CIR=(function(){
+  var UNIT={'':1,f:1e-15,p:1e-12,n:1e-9,u:1e-6,'µ':1e-6,m:1e-3,k:1e3,g:1e9,t:1e12};
+  function parseValue(s){
+    if(s==null) return NaN;
+    s=String(s).trim().replace(/,/g,'');
+    var m=s.match(/^([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*([a-zA-Zµ]*)/);
+    if(!m) return NaN;
+    var num=parseFloat(m[1]); if(!isFinite(num)) return NaN;
+    var suf=(m[2]||'').toLowerCase();
+    if(suf.indexOf('meg')===0) return num*1e6;
+    if(suf in UNIT) return num*UNIT[suf];
+    var key=suf.charAt(0);
+    return num*(key in UNIT?UNIT[key]:1);
+  }
+  function makeGroundSet(list){var set={};(list||['0','gnd','gnd!']).forEach(function(g){var k=String(g).trim().toLowerCase();if(k)set[k]=true;});return set;}
+  function logicalLines(raw){
+    var out=[],lines=String(raw).split(/\r?\n/);
+    for(var i=0;i<lines.length;i++){
+      var line=lines[i];var t=line.replace(/^\s+/,'');
+      if(t===''||t.charAt(0)==='*') continue;
+      line=line.replace(/\s\$.*$/,'').replace(/;.*$/,'').replace(/\s\/\/.*$/,'');
+      if(/^\s*\+/.test(line)){ if(out.length) out[out.length-1]+=' '+line.replace(/^\s*\+/,' '); }
+      else if(line.trim()!=='') out.push(line.trim());
+    }
+    return out;
+  }
+  function tokenize(line){return line.trim().split(/[\s=]+/).filter(Boolean);}
+  function parse(raw,opts){
+    opts=opts||{};
+    var ground=makeGroundSet(opts.groundNets);
+    var isGnd=function(n){return !!ground[String(n).toLowerCase()];};
+    var inductors={},selfL=[],mutualK=[],mutualC=[],selfC=[],unparsed=[];
+    var counts={L:0,K:0,C:0,R:0,other:0};
+    logicalLines(raw).forEach(function(line){
+      var tk=tokenize(line); if(!tk.length) return;
+      var name=tk[0],type=name.charAt(0).toUpperCase();
+      if(type==='L'){counts.L++;var rec={name:name,n1:tk[1]||'',n2:tk[2]||'',val:parseValue(tk[3])};inductors[name.toUpperCase()]=rec;selfL.push(rec);}
+      else if(type==='K'){counts.K++;mutualK.push({name:name,la:tk[1]||'',lb:tk[2]||'',k:parseValue(tk[3])});}
+      else if(type==='C'){
+        counts.C++;var cval=parseValue(tk[3]),a=tk[1]||'',b=tk[2]||'',ag=isGnd(a),bg=isGnd(b);
+        if(ag&&bg) selfC.push({name:name,net:a,gnd:b,val:cval});
+        else if(ag||bg){var net=ag?b:a,gg=ag?a:b;selfC.push({name:name,net:net,gnd:gg,val:cval});}
+        else mutualC.push({name:name,n1:a,n2:b,val:cval});
+      }
+      else if(type==='R'){counts.R++;}
+      else {counts.other++;unparsed.push(line);}
+    });
+    var mutualL=mutualK.map(function(kr){
+      var La=inductors[String(kr.la).toUpperCase()],Lb=inductors[String(kr.lb).toUpperCase()];
+      var netA=La?(La.n1+','+La.n2):kr.la,netB=Lb?(Lb.n1+','+Lb.n2):kr.lb,M=NaN;
+      if(La&&Lb&&isFinite(La.val)&&isFinite(Lb.val)&&isFinite(kr.k)) M=kr.k*Math.sqrt(La.val*Lb.val);
+      return {name:kr.name,la:kr.la,lb:kr.lb,net1:netA,net2:netB,k:kr.k,val:M};
+    });
+    return {mutualL:mutualL,selfL:selfL,mutualC:mutualC,selfC:selfC,counts:counts,unparsed:unparsed};
+  }
+  return {parse:parse,parseValue:parseValue};
+})();
+
+/* ================= HELPERS ================= */
+function formatEng(v,unit){
+  if(v==null||!isFinite(v)) return '—';
+  if(v===0) return '0 '+unit;
+  var a=Math.abs(v);
+  var pfx=[[1e-18,'a'],[1e-15,'f'],[1e-12,'p'],[1e-9,'n'],[1e-6,'µ'],[1e-3,'m'],[1,''],[1e3,'k']];
+  var ch=pfx[0];
+  for(var i=0;i<pfx.length;i++){ if(a>=pfx[i][0]) ch=pfx[i]; }
+  var scaled=v/ch[0];
+  var s=scaled.toFixed(3).replace(/\.?0+$/,'');
+  return s+' '+ch[1]+unit;
+}
+function heat(frac){frac=Math.max(0,Math.min(1,frac));var h=(1-frac)*120;return 'hsl('+h+',72%,42%)';}
+var PIE=['#0052CC','#00A3BF','#36B37E','#FFAB00','#FF7452','#6554C0','#DE350B','#00875A','#0065FF','#8777D9','#57D9A3','#FF991F'];
+function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+/* Filter matcher: supports glob wildcards (* = any run, ? = one char); plain text = case-insensitive "contains". */
+function globToRe(pat){
+  var s=String(pat).replace(/[.+^${}()|[\]\\]/g,'\\$&').replace(/\*/g,'.*').replace(/\?/g,'.');
+  try{return new RegExp('^'+s+'$','i');}catch(e){return null;}
+}
+function fieldMatches(pattern,vals){
+  var f=String(pattern).trim();
+  if(!f) return true;
+  var wild=/[*?]/.test(f),re=wild?globToRe(f):null,lc=f.toLowerCase();
+  for(var i=0;i<vals.length;i++){
+    var v=String(vals[i]==null?'':vals[i]);
+    if(wild){ if(re&&re.test(v)) return true; }
+    else if(v.toLowerCase().indexOf(lc)>=0) return true;
+  }
+  return false;
+}
+function toast(msg){var t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(function(){t.classList.remove('show');},1600);}
+function copyText(txt){
+  if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(txt).then(function(){toast('Copied to clipboard ✔');},function(){fallbackCopy(txt);});}
+  else fallbackCopy(txt);
+}
+function fallbackCopy(txt){var ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Copied to clipboard ✔');}catch(e){toast('Select the code box and copy manually');}document.body.removeChild(ta);}
+
+/* ================= SVG PIE ================= */
+function buildPie(rows,valKey,unit,size){
+  size=size||150;
+  var items=rows.map(function(r){return {label:r.name,v:Math.abs(r[valKey])||0};}).filter(function(x){return isFinite(x.v)&&x.v>0;});
+  items.sort(function(a,b){return b.v-a.v;});
+  var top=items.slice(0,10),rest=items.slice(10);
+  if(rest.length){var s=rest.reduce(function(a,b){return a+b.v;},0);top.push({label:'Others ('+rest.length+')',v:s,other:true});}
+  var total=top.reduce(function(a,b){return a+b.v;},0);
+  var cx=size/2,cy=size/2,r=size/2-2,ang=-Math.PI/2,paths='';
+  top.forEach(function(it,i){
+    var frac=total?it.v/total:0,a2=ang+frac*2*Math.PI;
+    var x1=cx+r*Math.cos(ang),y1=cy+r*Math.sin(ang),x2=cx+r*Math.cos(a2),y2=cy+r*Math.sin(a2);
+    var large=frac>0.5?1:0;
+    if(frac>=0.9999){paths+='<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="'+PIE[i%PIE.length]+'"/>';}
+    else{paths+='<path d="M'+cx+','+cy+' L'+x1.toFixed(2)+','+y1.toFixed(2)+' A'+r+','+r+' 0 '+large+' 1 '+x2.toFixed(2)+','+y2.toFixed(2)+' Z" fill="'+PIE[i%PIE.length]+'" stroke="#fff" stroke-width="1"/>';}
+    it._color=PIE[i%PIE.length];it._pct=frac*100;
+    ang=a2;
+  });
+  var svg='<svg width="'+size+'" height="'+size+'" viewBox="0 0 '+size+' '+size+'">'+paths+'</svg>';
+  var legend='<div class="legend">'+top.map(function(it){return '<div class="li"><span class="sw" style="background:'+it._color+'"></span><span class="nm" title="'+esc(it.label)+'">'+esc(it.label)+'</span><span class="pc">'+it._pct.toFixed(1)+'%</span></div>';}).join('')+'</div>';
+  var totTxt='<div style="text-align:center;font-size:11px;color:var(--sub);margin-top:4px;">Σ = '+formatEng(total,unit)+'</div>';
+  return '<div class="pie-row"><div><div style="font-size:11px;color:var(--sub);text-align:center;margin-bottom:2px;font-weight:600;">Total pie</div>'+svg+totTxt+'</div>'+legend+'</div>';
+}
+
+/* ================= TABLE SECTION ================= */
+function makeSection(cfg){
+  // state
+  var st={sortKey:cfg.valueKey,sortDir:-1,topN:20,showAll:false,filters:{},vmin:'',vmax:''};
+  if(cfg.defaultFilters){Object.keys(cfg.defaultFilters).forEach(function(k){st.filters[k]=cfg.defaultFilters[k];});}
+  var wrapEl=document.createElement('div');wrapEl.className='card';wrapEl.id=cfg.id;
+  var host=document.createElement('div');
+  wrapEl.innerHTML='<div class="banner">'+cfg.icon+' '+cfg.title+'<span class="count">'+cfg.data.length+' rows</span></div>';
+  var body=document.createElement('div');body.className='card-body';wrapEl.appendChild(body);
+  body.appendChild(host);
+
+  function visibleRows(){
+    var rows=cfg.data.slice();
+    // text filters (glob-aware; also matches the element name so typing e.g. "K12" works in a net box)
+    cfg.filterKeys.forEach(function(k){
+      var f=(st.filters[k]||'').trim();
+      if(f) rows=rows.filter(function(r){
+        var vals=[r[k]];
+        if(r.name!=null&&k!=='name') vals.push(r.name);
+        return fieldMatches(f,vals);
+      });
+    });
+    // value range
+    var vmin=st.vmin!==''?CIR.parseValue(st.vmin):null;
+    var vmax=st.vmax!==''?CIR.parseValue(st.vmax):null;
+    if(vmin!=null&&isFinite(vmin)) rows=rows.filter(function(r){return Math.abs(r[cfg.valueKey])>=vmin;});
+    if(vmax!=null&&isFinite(vmax)) rows=rows.filter(function(r){return Math.abs(r[cfg.valueKey])<=vmax;});
+    // sort
+    var k=st.sortKey,dir=st.sortDir;
+    rows.sort(function(a,b){
+      var va=a[k],vb=b[k];
+      var na=(typeof va==='number'),nb=(typeof vb==='number');
+      if(na&&nb){ var x=(isFinite(va)?va:-Infinity),y=(isFinite(vb)?vb:-Infinity); return (x-y)*dir; }
+      return String(va).localeCompare(String(vb))*dir;
+    });
+    return rows;
+  }
+
+  function exportCode(rows,fmt){
+    var cols=cfg.columns;
+    var head=cols.map(function(c){return c.label;});
+    var lines=[];
+    if(fmt==='confluence'){
+      lines.push('||'+head.join('||')+'||');
+      rows.forEach(function(r,i){
+        lines.push('|'+cols.map(function(c){return cellText(c,r,i+1);}).join('|')+'|');
+      });
+    }else{ // markdown
+      lines.push('| '+head.join(' | ')+' |');
+      lines.push('|'+head.map(function(){return '---';}).join('|')+'|');
+      rows.forEach(function(r,i){
+        lines.push('| '+cols.map(function(c){return cellText(c,r,i+1);}).join(' | ')+' |');
+      });
+    }
+    return lines.join('\n');
+  }
+  function cellText(c,r,rank){
+    if(c.key==='__rank') return String(rank);
+    if(c.type==='val') return formatEng(r[cfg.valueKey],cfg.unit);
+    if(c.type==='num') return isFinite(r[c.key])?(+r[c.key]).toPrecision(4).replace(/\.?0+$/,''):'—';
+    return String(r[c.key]==null?'':r[c.key]);
+  }
+
+  function render(){
+    var all=visibleRows();
+    var shown=st.showAll?all:all.slice(0,st.topN);
+    // max abs for bars (over shown)
+    var maxAbs=0;shown.forEach(function(r){var a=Math.abs(r[cfg.valueKey]);if(isFinite(a)&&a>maxAbs)maxAbs=a;});
+    var cols=cfg.columns;
+    var html='';
+    // pie
+    html+=buildPie(all,cfg.valueKey,cfg.unit);
+    // controls
+    html+='<div class="tbl-controls">';
+    cfg.filterKeys.forEach(function(k){
+      var lbl=(cols.filter(function(c){return c.key===k;})[0]||{}).label||k;
+      html+='<div class="fld"><label>🔍 '+esc(lbl)+'</label><input type="text" data-flt="'+k+'" value="'+esc(st.filters[k]||'')+'" placeholder="contains… (* wildcard)" title="Substring match, or use * / ? wildcards (e.g. *PWM*). Also matches the element name." style="width:150px;"></div>';
+    });
+    html+='<div class="fld"><label>value ≥ (e.g. 10f)</label><input type="text" data-vmin value="'+esc(st.vmin)+'" style="width:90px;"></div>';
+    html+='<div class="fld"><label>value ≤</label><input type="text" data-vmax value="'+esc(st.vmax)+'" style="width:90px;"></div>';
+    html+='<div class="fld"><label>Top N</label><input type="number" data-topn min="1" value="'+st.topN+'" style="width:70px;" '+(st.showAll?'disabled':'')+'></div>';
+    html+='<div class="fld"><label>&nbsp;</label><button class="btn ghost sm" data-toggle>'+(st.showAll?'Show top N':'Show all ('+all.length+')')+'</button></div>';
+    html+='</div>';
+    // table
+    if(!shown.length){ html+='<div class="empty">No rows match the current filters.</div>'; }
+    else{
+      html+='<table><thead><tr>';
+      cols.forEach(function(c){
+        var sk=c.sortKey||c.key;
+        var sorted=(st.sortKey===sk)?' sorted':'';
+        var arr=(st.sortKey===sk)?(st.sortDir<0?'▼':'▲'):'↕';
+        html+='<th class="'+sorted+'" data-sort="'+sk+'">'+(c.icon?c.icon+' ':'')+esc(c.label)+'<span class="arrow">'+arr+'</span></th>';
+      });
+      html+='</tr></thead><tbody>';
+      shown.forEach(function(r,i){
+        html+='<tr>';
+        cols.forEach(function(c){
+          if(c.key==='__rank'){
+            var medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+            html+='<td class="rank">'+(medal?'<span class="medal">'+medal+'</span>':'#'+(i+1))+'</td>';
+          }else if(c.type==='val'){
+            var v=r[cfg.valueKey],a=Math.abs(v),frac=maxAbs?a/maxAbs:0,col=heat(frac);
+            html+='<td class="valcell"><div class="valbar" style="width:'+(frac*100).toFixed(1)+'%;background:'+col+';"></div><span class="valtxt" style="color:'+col+';">'+formatEng(v,cfg.unit)+'</span></td>';
+          }else if(c.type==='num'){
+            html+='<td style="font-family:ui-monospace,monospace;text-align:right;">'+(isFinite(r[c.key])?(+r[c.key]).toPrecision(4).replace(/\.?0+$/,''):'—')+'</td>';
+          }else{
+            html+='<td class="net">'+esc(r[c.key]==null?'':r[c.key])+'</td>';
+          }
+        });
+        html+='</tr>';
+      });
+      html+='</tbody></table>';
+      html+='<div class="muted" style="margin-top:6px;">Showing '+shown.length+' of '+all.length+' rows'+(all.length!==cfg.data.length?' (filtered from '+cfg.data.length+')':'')+'.</div>';
+    }
+    // export
+    var conf=exportCode(shown,'confluence');
+    html+='<details class="export"><summary>📋 Copy-paste code for Confluence ('+shown.length+' rows shown)</summary><div class="export-body">'+
+      '<div class="radio-row"><label><input type="radio" name="fmt-'+cfg.id+'" value="confluence" checked> Confluence wiki markup</label>'+
+      '<label><input type="radio" name="fmt-'+cfg.id+'" value="markdown"> Markdown</label>'+
+      '<button class="btn sm" data-copy>Copy ⧉</button></div>'+
+      '<textarea data-code rows="8" readonly>'+esc(conf)+'</textarea>'+
+      '<div class="muted" style="margin-top:6px;">Confluence Cloud: paste Markdown directly into the editor (auto-converts to a table). Confluence Server/DC: use <code class="k">Insert &gt; Markup</code> and paste the wiki markup. Export reflects current filters, sort &amp; Top-N.</div>'+
+      '</div></details>';
+
+    host.innerHTML=html;
+    wire(all,shown);
+  }
+
+  function wire(all,shown){
+    // sort
+    host.querySelectorAll('th[data-sort]').forEach(function(th){
+      th.onclick=function(){var k=th.getAttribute('data-sort');if(st.sortKey===k){st.sortDir*=-1;}else{st.sortKey=k;st.sortDir=(k===cfg.valueKey||['k'].indexOf(k)>=0)?-1:1;}render();};
+    });
+    // filters
+    host.querySelectorAll('input[data-flt]').forEach(function(inp){
+      inp.oninput=function(){st.filters[inp.getAttribute('data-flt')]=inp.value;var pos=inp.selectionStart;render();var n=host.querySelector('input[data-flt="'+inp.getAttribute('data-flt')+'"]');if(n){n.focus();n.setSelectionRange(pos,pos);}};
+    });
+    var vmin=host.querySelector('input[data-vmin]');if(vmin)vmin.oninput=function(){st.vmin=vmin.value;var p=vmin.selectionStart;render();var n=host.querySelector('input[data-vmin]');if(n){n.focus();n.setSelectionRange(p,p);}};
+    var vmax=host.querySelector('input[data-vmax]');if(vmax)vmax.oninput=function(){st.vmax=vmax.value;var p=vmax.selectionStart;render();var n=host.querySelector('input[data-vmax]');if(n){n.focus();n.setSelectionRange(p,p);}};
+    var topn=host.querySelector('input[data-topn]');if(topn)topn.oninput=function(){var v=parseInt(topn.value,10);if(v>0){st.topN=v;render();}};
+    var tg=host.querySelector('[data-toggle]');if(tg)tg.onclick=function(){st.showAll=!st.showAll;render();};
+    // export
+    var codeEl=host.querySelector('[data-code]');
+    host.querySelectorAll('input[name="fmt-'+cfg.id+'"]').forEach(function(rb){
+      rb.onchange=function(){codeEl.value=exportCode(shown,rb.value);};
+    });
+    var cp=host.querySelector('[data-copy]');if(cp)cp.onclick=function(){copyText(codeEl.value);};
+  }
+
+  render();
+  return wrapEl;
+}
+
+/* ================= APP ================= */
+var SAMPLE=`* Sample parasitic extraction netlist — multiphase buck (PWM aggressor -> CS victim)
+* Default filters (Net1=*PWM*, Net2=*CS*) surface the PWM->current-sense couplings.
+L1 PWM_HS1 SW1    2.2nH
+L2 PWM_HS2 SW2    2.1nH
+L3 CS_P    CS_N   1.5nH
+L4 CS_RTN  AGND   1.6nH
+L5 PGND1   PGND_C 0.8n
+K12 L1 L2 0.40
+K13 L1 L3 0.18
+K14 L1 L4 0.06
+K23 L2 L3 0.15
+K24 L2 L4 0.05
+K35 L3 L5 0.03
+C1 SW1 SW2 12.5fF
+C2 PWM_HS1 CS_P 4.0f
+C3 SW1 CS_N 3.2f
+C4 CS_P CS_N 6.5fF
+Cg1 SW1 0 120fF
+Cg2 SW2 gnd! 118f
+Cg3 CS_P 0 40fF
+Cg4 CS_N AGND 42f
+R1 SW1 VOUT 0.02`;
+
+function buildTables(res){
+  var host=document.getElementById('tables');host.innerHTML='';
+  // summary
+  var sum=document.getElementById('sum');
+  sum.innerHTML='<div class="banner" style="border-radius:4px;">📊 Summary</div>'+
+    '<div class="tiles">'+
+    tile(res.mutualL.length,'🔗 Mutual L (K)')+
+    tile(res.selfL.length,'🌀 Self L')+
+    tile(res.mutualC.length,'⚡ Mutual C')+
+    tile(res.selfC.length,'⏚ Self C→GND')+
+    tile(res.counts.R,'▬ Resistors (skipped)')+
+    '</div>';
+
+  var s1=makeSection({
+    id:'t1',title:'Mutual Inductance',icon:'🔗',data:res.mutualL,valueKey:'val',unit:'H',
+    filterKeys:['net1','net2'],
+    defaultFilters:{net1:'*PWM*',net2:'*CS*'},
+    columns:[
+      {key:'__rank',label:'#'},
+      {key:'name',label:'K name',icon:'🏷️'},
+      {key:'net1',label:'Net1 (Lₐ nodes)',icon:'🔌',sortKey:'net1'},
+      {key:'net2',label:'Net2 (L_b nodes)',icon:'🔌',sortKey:'net2'},
+      {key:'k',label:'k',icon:'🔗',type:'num'},
+      {key:'val',label:'M (H)',icon:'📈',type:'val'}
+    ]
+  });
+  var s2=makeSection({
+    id:'t2',title:'Self Inductance',icon:'🌀',data:res.selfL,valueKey:'val',unit:'H',
+    filterKeys:['n1','n2'],
+    columns:[
+      {key:'__rank',label:'#'},
+      {key:'name',label:'L name',icon:'🏷️'},
+      {key:'n1',label:'Net1',icon:'🔌',sortKey:'n1'},
+      {key:'n2',label:'Net2',icon:'🔌',sortKey:'n2'},
+      {key:'val',label:'L (H)',icon:'📈',type:'val'}
+    ]
+  });
+  var s3=makeSection({
+    id:'t3',title:'Mutual Capacitance',icon:'⚡',data:res.mutualC,valueKey:'val',unit:'F',
+    filterKeys:['n1','n2'],
+    columns:[
+      {key:'__rank',label:'#'},
+      {key:'name',label:'C name',icon:'🏷️'},
+      {key:'n1',label:'Net1',icon:'🔌',sortKey:'n1'},
+      {key:'n2',label:'Net2',icon:'🔌',sortKey:'n2'},
+      {key:'val',label:'C (F)',icon:'📈',type:'val'}
+    ]
+  });
+  var s4=makeSection({
+    id:'t4',title:'Self Capacitance to GND',icon:'⏚',data:res.selfC,valueKey:'val',unit:'F',
+    filterKeys:['net','gnd'],
+    columns:[
+      {key:'__rank',label:'#'},
+      {key:'name',label:'C name',icon:'🏷️'},
+      {key:'net',label:'Net',icon:'🔌',sortKey:'net'},
+      {key:'gnd',label:'GND ref',icon:'⏚',sortKey:'gnd'},
+      {key:'val',label:'C (F)',icon:'📈',type:'val'}
+    ]
+  });
+  host.appendChild(s1);host.appendChild(s2);host.appendChild(s3);host.appendChild(s4);
+  document.getElementById('index').style.display='';
+
+  var note=document.getElementById('parseNote');
+  note.style.display='';
+  note.innerHTML='✔ Parsed: <b>'+res.counts.L+'</b> L, <b>'+res.counts.K+'</b> K, <b>'+res.counts.C+'</b> C, <b>'+res.counts.R+'</b> R.'+
+    (res.unparsed.length?(' &nbsp;⚠ '+res.unparsed.length+' line(s) not in L/K/C/R categories were skipped.'):'')+
+    ' &nbsp;Assumptions: mutual inductance M = k·√(Lₐ·L_b); ground nets = <code class="k">'+esc(document.getElementById('gnd').value)+'</code> (edit &amp; re-parse to change).';
+  sum.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function tile(n,l){return '<div class="tile"><div class="n">'+n+'</div><div class="l">'+l+'</div></div>';}
+
+function doParse(text){
+  if(!text||!text.trim()){toast('No netlist text — drop a file, paste, or load the sample.');return;}
+  var gnd=document.getElementById('gnd').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
+  var res=CIR.parse(text,{groundNets:gnd});
+  buildTables(res);
+}
+
+/* wiring */
+var fileInput=document.getElementById('file'),drop=document.getElementById('drop'),paste=document.getElementById('paste');
+drop.onclick=function(){fileInput.click();};
+fileInput.onchange=function(e){var f=e.target.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){paste.value=rd.result;doParse(rd.result);};rd.readAsText(f);};
+drop.ondragover=function(e){e.preventDefault();drop.classList.add('hover');};
+drop.ondragleave=function(){drop.classList.remove('hover');};
+drop.ondrop=function(e){e.preventDefault();drop.classList.remove('hover');var f=e.dataTransfer.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){paste.value=rd.result;doParse(rd.result);};rd.readAsText(f);};
+document.getElementById('parseBtn').onclick=function(){doParse(paste.value);};
+document.getElementById('sampleBtn').onclick=function(){paste.value=SAMPLE;doParse(SAMPLE);};
+</script>
+</body>
+</html>
