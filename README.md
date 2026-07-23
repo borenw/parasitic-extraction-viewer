@@ -13,4 +13,8 @@ Each 🔍 box does a case-insensitive **substring** match, or a **glob** match w
 
 The **Mutual Inductance** table ships with default filters **Net1 = `*PWM*`** and **Net2 = `*CS*`** — it opens showing the PWM-aggressor → current-sense-victim inductive couplings. Clear the boxes to see everything.
 
+## Source window
+
+A 5-line scrollable window of the original `.cir` (with line numbers) sits directly above the Mutual Inductance table. **Click any row** and the window highlights and zooms to that coupling's `K` line in the source.
+
 **Live:** https://borenw.github.io/parasitic-extraction-viewer/ — Page 35 of [Bo's Engineering Curriculum](https://borenw.github.io/).

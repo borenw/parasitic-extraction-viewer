@@ -84,6 +84,18 @@
   .toast.show{opacity:1;}
   .note{background:#FFFAE6;border:1px solid #FFE380;border-radius:6px;padding:10px 12px;font-size:12px;color:#5E4B00;margin-top:10px;}
   code.k{background:#EBECF0;border-radius:3px;padding:1px 5px;font-size:12px;}
+  /* Source .cir window */
+  .cir-box{border:1px solid var(--border);border-radius:6px;background:#FAFBFC;overflow:auto;
+    max-height:8.7em; /* ~5 lines visible */ font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.55;scroll-behavior:smooth;}
+  .cir-line{display:flex;gap:10px;padding:0 8px;white-space:pre;transition:background .15s;transform-origin:left center;}
+  .cir-line .ln{color:var(--sub);text-align:right;min-width:2.4em;user-select:none;border-right:1px solid var(--border);padding-right:8px;flex-shrink:0;}
+  .cir-line .code{color:var(--ink);}
+  .cir-line.hot{background:#FFF3BF;box-shadow:inset 3px 0 0 var(--amber);}
+  .cir-line.hot .code{font-weight:700;color:#5E4B00;}
+  @keyframes cirZoom{0%{transform:scale(1);}28%{transform:scale(1.07);}100%{transform:scale(1);}}
+  .cir-line.zoom{animation:cirZoom .5s ease;}
+  tr.selrow td{background:var(--blue-light) !important;box-shadow:inset 3px 0 0 var(--blue);}
+  tbody tr[data-ridx]{cursor:pointer;}
 </style>
 </head>
 <body>
@@ -166,13 +178,14 @@ var CIR=(function(){
   }
   function makeGroundSet(list){var set={};(list||['0','gnd','gnd!']).forEach(function(g){var k=String(g).trim().toLowerCase();if(k)set[k]=true;});return set;}
   function logicalLines(raw){
+    // returns {text, line} — line = 1-based number of the FIRST physical line of the statement
     var out=[],lines=String(raw).split(/\r?\n/);
     for(var i=0;i<lines.length;i++){
       var line=lines[i];var t=line.replace(/^\s+/,'');
       if(t===''||t.charAt(0)==='*') continue;
       line=line.replace(/\s\$.*$/,'').replace(/;.*$/,'').replace(/\s\/\/.*$/,'');
-      if(/^\s*\+/.test(line)){ if(out.length) out[out.length-1]+=' '+line.replace(/^\s*\+/,' '); }
-      else if(line.trim()!=='') out.push(line.trim());
+      if(/^\s*\+/.test(line)){ if(out.length) out[out.length-1].text+=' '+line.replace(/^\s*\+/,' '); }
+      else if(line.trim()!=='') out.push({text:line.trim(),line:i+1});
     }
     return out;
   }
@@ -183,16 +196,17 @@ var CIR=(function(){
     var isGnd=function(n){return !!ground[String(n).toLowerCase()];};
     var inductors={},selfL=[],mutualK=[],mutualC=[],selfC=[],unparsed=[];
     var counts={L:0,K:0,C:0,R:0,other:0};
-    logicalLines(raw).forEach(function(line){
+    logicalLines(raw).forEach(function(rec){
+      var line=rec.text,srcLine=rec.line;
       var tk=tokenize(line); if(!tk.length) return;
       var name=tk[0],type=name.charAt(0).toUpperCase();
-      if(type==='L'){counts.L++;var rec={name:name,n1:tk[1]||'',n2:tk[2]||'',val:parseValue(tk[3])};inductors[name.toUpperCase()]=rec;selfL.push(rec);}
-      else if(type==='K'){counts.K++;mutualK.push({name:name,la:tk[1]||'',lb:tk[2]||'',k:parseValue(tk[3])});}
+      if(type==='L'){counts.L++;var lrec={name:name,n1:tk[1]||'',n2:tk[2]||'',val:parseValue(tk[3]),srcLine:srcLine};inductors[name.toUpperCase()]=lrec;selfL.push(lrec);}
+      else if(type==='K'){counts.K++;mutualK.push({name:name,la:tk[1]||'',lb:tk[2]||'',k:parseValue(tk[3]),srcLine:srcLine});}
       else if(type==='C'){
         counts.C++;var cval=parseValue(tk[3]),a=tk[1]||'',b=tk[2]||'',ag=isGnd(a),bg=isGnd(b);
-        if(ag&&bg) selfC.push({name:name,net:a,gnd:b,val:cval});
-        else if(ag||bg){var net=ag?b:a,gg=ag?a:b;selfC.push({name:name,net:net,gnd:gg,val:cval});}
-        else mutualC.push({name:name,n1:a,n2:b,val:cval});
+        if(ag&&bg) selfC.push({name:name,net:a,gnd:b,val:cval,srcLine:srcLine});
+        else if(ag||bg){var net=ag?b:a,gg=ag?a:b;selfC.push({name:name,net:net,gnd:gg,val:cval,srcLine:srcLine});}
+        else mutualC.push({name:name,n1:a,n2:b,val:cval,srcLine:srcLine});
       }
       else if(type==='R'){counts.R++;}
       else {counts.other++;unparsed.push(line);}
@@ -201,9 +215,9 @@ var CIR=(function(){
       var La=inductors[String(kr.la).toUpperCase()],Lb=inductors[String(kr.lb).toUpperCase()];
       var netA=La?(La.n1+','+La.n2):kr.la,netB=Lb?(Lb.n1+','+Lb.n2):kr.lb,M=NaN;
       if(La&&Lb&&isFinite(La.val)&&isFinite(Lb.val)&&isFinite(kr.k)) M=kr.k*Math.sqrt(La.val*Lb.val);
-      return {name:kr.name,la:kr.la,lb:kr.lb,net1:netA,net2:netB,k:kr.k,val:M};
+      return {name:kr.name,la:kr.la,lb:kr.lb,net1:netA,net2:netB,k:kr.k,val:M,srcLine:kr.srcLine};
     });
-    return {mutualL:mutualL,selfL:selfL,mutualC:mutualC,selfC:selfC,counts:counts,unparsed:unparsed};
+    return {mutualL:mutualL,selfL:selfL,mutualC:mutualC,selfC:selfC,counts:counts,unparsed:unparsed,raw:String(raw)};
   }
   return {parse:parse,parseValue:parseValue};
 })();
@@ -365,7 +379,7 @@ function makeSection(cfg){
       });
       html+='</tr></thead><tbody>';
       shown.forEach(function(r,i){
-        html+='<tr>';
+        html+='<tr'+(cfg.onRowClick?' data-ridx="'+i+'"':'')+'>';
         cols.forEach(function(c){
           if(c.key==='__rank'){
             var medal=i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
@@ -417,6 +431,17 @@ function makeSection(cfg){
       rb.onchange=function(){codeEl.value=exportCode(shown,rb.value);};
     });
     var cp=host.querySelector('[data-copy]');if(cp)cp.onclick=function(){copyText(codeEl.value);};
+    // row click → callback (e.g. highlight source .cir line)
+    if(cfg.onRowClick){
+      host.querySelectorAll('tbody tr[data-ridx]').forEach(function(tr){
+        tr.onclick=function(){
+          var i=+tr.getAttribute('data-ridx');
+          host.querySelectorAll('tbody tr.selrow').forEach(function(x){x.classList.remove('selrow');});
+          tr.classList.add('selrow');
+          cfg.onRowClick(shown[i],tr);
+        };
+      });
+    }
   }
 
   render();
@@ -447,6 +472,32 @@ Cg3 CS_P 0 40fF
 Cg4 CS_N AGND 42f
 R1 SW1 VOUT 0.02`;
 
+/* ===== Source .cir window (5-line window, click-to-zoom) ===== */
+function buildSourceViewer(raw){
+  var lines=String(raw==null?'':raw).replace(/\s+$/,'').split(/\r?\n/);
+  var wrap=document.createElement('div');wrap.className='card';wrap.id='cir-src';
+  wrap.innerHTML='<div class="banner">📄 Source netlist (.cir)<span class="count">'+lines.length+' lines</span></div>';
+  var body=document.createElement('div');body.className='card-body';
+  var box=document.createElement('div');box.className='cir-box';box.id='cir-box';
+  var html='';
+  for(var i=0;i<lines.length;i++){
+    html+='<div class="cir-line" data-line="'+(i+1)+'"><span class="ln">'+(i+1)+'</span><span class="code">'+esc(lines[i]!==''?lines[i]:' ')+'</span></div>';
+  }
+  box.innerHTML=html;body.appendChild(box);
+  var hint=document.createElement('div');hint.className='muted';hint.style.marginTop='6px';
+  hint.innerHTML='👇 Click any <b>Mutual Inductance</b> row below to highlight &amp; zoom to its <code class="k">K</code> line here.';
+  body.appendChild(hint);wrap.appendChild(body);
+  return wrap;
+}
+function highlightCirLine(n){
+  var box=document.getElementById('cir-box');if(!box||!n)return;
+  var prev=box.querySelector('.cir-line.hot');if(prev)prev.classList.remove('hot');
+  var el=box.querySelector('.cir-line[data-line="'+n+'"]');if(!el)return;
+  el.classList.add('hot');
+  box.scrollTop=Math.max(0,el.offsetTop-box.clientHeight/2+el.clientHeight/2);
+  el.classList.remove('zoom');void el.offsetWidth;el.classList.add('zoom');
+}
+
 function buildTables(res){
   var host=document.getElementById('tables');host.innerHTML='';
   // summary
@@ -464,6 +515,7 @@ function buildTables(res){
     id:'t1',title:'Mutual Inductance',icon:'🔗',data:res.mutualL,valueKey:'val',unit:'H',
     filterKeys:['net1','net2'],
     defaultFilters:{net1:'*PWM*',net2:'*CS*'},
+    onRowClick:function(row){highlightCirLine(row.srcLine);},
     columns:[
       {key:'__rank',label:'#'},
       {key:'name',label:'K name',icon:'🏷️'},
@@ -506,6 +558,7 @@ function buildTables(res){
       {key:'val',label:'C (F)',icon:'📈',type:'val'}
     ]
   });
+  host.appendChild(buildSourceViewer(res.raw));
   host.appendChild(s1);host.appendChild(s2);host.appendChild(s3);host.appendChild(s4);
   document.getElementById('index').style.display='';
 
