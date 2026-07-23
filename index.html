@@ -101,7 +101,7 @@
 <body>
 <div class="hero">
   <h1>⚡ Parasitic Extraction (.cir) Table Viewer</h1>
-  <p>Load an extraction netlist → get sortable/filterable tables + copy-paste-ready Confluence markup. Mutual&nbsp;L · Self&nbsp;L · Mutual&nbsp;C · Self&nbsp;C-to-GND.</p>
+  <p>Load an extraction netlist → get sortable/filterable tables + copy-paste-ready Confluence markup. Mutual&nbsp;L · Self&nbsp;L · Mutual&nbsp;C · Self&nbsp;C-to-GND. Handles <code style="color:#DEEBFF">.subckt</code> blocks and translates <b>Ansoft</b> node numbers → signal names.</p>
 </div>
 
 <div class="wrap">
@@ -127,6 +127,10 @@ Cg1 SW 0 120fF"></textarea>
         <div class="fld">
           <label>Ground nets (comma-sep, case-insensitive)</label>
           <input type="text" id="gnd" value="0, gnd, gnd!, vss, vss!, dgnd, agnd" style="width:340px;">
+        </div>
+        <div class="fld">
+          <label>Ansoft header</label>
+          <label style="display:flex;align-items:center;gap:6px;height:32px;font-size:13px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--ink);white-space:nowrap;"><input type="checkbox" id="xlate" checked> Translate node #s → names</label>
         </div>
         <button class="btn" id="parseBtn">▶ Parse netlist</button>
         <button class="btn ghost sm" id="sampleBtn">Load sample</button>
@@ -177,6 +181,15 @@ var CIR=(function(){
     return num*(key in UNIT?UNIT[key]:1);
   }
   function makeGroundSet(list){var set={};(list||['0','gnd','gnd!']).forEach(function(g){var k=String(g).trim().toLowerCase();if(k)set[k]=true;});return set;}
+  // Ansoft/ANSYS extraction header maps numeric nodes to signal names: "* node 1 CS0:U1_CS0_86_src"
+  function parseHeader(raw){
+    var map={},n=0,lines=String(raw).split(/\r?\n/);
+    for(var i=0;i<lines.length;i++){
+      var m=lines[i].match(/^\*\s*node\s+(\S+)\s+(.+?)\s*$/i);
+      if(m&&!Object.prototype.hasOwnProperty.call(map,m[1])){map[m[1]]=m[2];n++;}
+    }
+    return {map:map,count:n};
+  }
   function logicalLines(raw){
     // returns {text, line} — line = 1-based number of the FIRST physical line of the statement
     var out=[],lines=String(raw).split(/\r?\n/);
@@ -194,16 +207,20 @@ var CIR=(function(){
     opts=opts||{};
     var ground=makeGroundSet(opts.groundNets);
     var isGnd=function(n){return !!ground[String(n).toLowerCase()];};
+    var hdr=parseHeader(raw),nodeMap=hdr.map;
+    var doXlate=(opts.translate!==false)&&hdr.count>0;
+    var xlate=function(t){t=String(t==null?'':t);return (doXlate&&Object.prototype.hasOwnProperty.call(nodeMap,t))?nodeMap[t]:t;};
     var inductors={},selfL=[],mutualK=[],mutualC=[],selfC=[],unparsed=[];
     var counts={L:0,K:0,C:0,R:0,other:0};
     logicalLines(raw).forEach(function(rec){
       var line=rec.text,srcLine=rec.line;
       var tk=tokenize(line); if(!tk.length) return;
       var name=tk[0],type=name.charAt(0).toUpperCase();
-      if(type==='L'){counts.L++;var lrec={name:name,n1:tk[1]||'',n2:tk[2]||'',val:parseValue(tk[3]),srcLine:srcLine};inductors[name.toUpperCase()]=lrec;selfL.push(lrec);}
+      if(name.charAt(0)==='.') return; // control/dot command (.subckt/.ends/.model/.param/...) — skip, but its inner elements are still parsed
+      if(type==='L'){counts.L++;var lrec={name:name,n1:xlate(tk[1]),n2:xlate(tk[2]),val:parseValue(tk[3]),srcLine:srcLine};inductors[name.toUpperCase()]=lrec;selfL.push(lrec);}
       else if(type==='K'){counts.K++;mutualK.push({name:name,la:tk[1]||'',lb:tk[2]||'',k:parseValue(tk[3]),srcLine:srcLine});}
       else if(type==='C'){
-        counts.C++;var cval=parseValue(tk[3]),a=tk[1]||'',b=tk[2]||'',ag=isGnd(a),bg=isGnd(b);
+        counts.C++;var cval=parseValue(tk[3]),ra=tk[1]||'',rb=tk[2]||'',a=xlate(ra),b=xlate(rb),ag=isGnd(ra)||isGnd(a),bg=isGnd(rb)||isGnd(b);
         if(ag&&bg) selfC.push({name:name,net:a,gnd:b,val:cval,srcLine:srcLine});
         else if(ag||bg){var net=ag?b:a,gg=ag?a:b;selfC.push({name:name,net:net,gnd:gg,val:cval,srcLine:srcLine});}
         else mutualC.push({name:name,n1:a,n2:b,val:cval,srcLine:srcLine});
@@ -217,7 +234,7 @@ var CIR=(function(){
       if(La&&Lb&&isFinite(La.val)&&isFinite(Lb.val)&&isFinite(kr.k)) M=kr.k*Math.sqrt(La.val*Lb.val);
       return {name:kr.name,la:kr.la,lb:kr.lb,net1:netA,net2:netB,k:kr.k,val:M,srcLine:kr.srcLine};
     });
-    return {mutualL:mutualL,selfL:selfL,mutualC:mutualC,selfC:selfC,counts:counts,unparsed:unparsed,raw:String(raw)};
+    return {mutualL:mutualL,selfL:selfL,mutualC:mutualC,selfC:selfC,counts:counts,unparsed:unparsed,raw:String(raw),nodesMapped:hdr.count,translated:doXlate};
   }
   return {parse:parse,parseValue:parseValue};
 })();
@@ -449,28 +466,38 @@ function makeSection(cfg){
 }
 
 /* ================= APP ================= */
-var SAMPLE=`* Sample parasitic extraction netlist — multiphase buck (PWM aggressor -> CS victim)
+var SAMPLE=`*BEGIN ANSOFT HEADER
+* node 1 PWM0:U1_HS1_gate
+* node 2 SW0:U1_SW1_node
+* node 3 PWM1:U2_HS2_gate
+* node 4 SW1:U2_SW2_node
+* node 5 CS0:U3_CSP_sense
+* node 6 CS1:U3_CSN_sense
+* node 7 CS2:U3_CS_return
+* node 8 AGND:U3_analog_gnd
+*END ANSOFT HEADER
+* Multiphase-buck parasitic extraction (Ansoft Q3D) — PWM aggressor -> CS victim
 * Default filters (Net1=*PWM*, Net2=*CS*) surface the PWM->current-sense couplings.
-L1 PWM_HS1 SW1    2.2nH
-L2 PWM_HS2 SW2    2.1nH
-L3 CS_P    CS_N   1.5nH
-L4 CS_RTN  AGND   1.6nH
-L5 PGND1   PGND_C 0.8n
+.SUBCKT buck_parasitics 1 2 3 4 5 6 7 8
+L1 1 2 2.2nH
+L2 3 4 2.1nH
+L3 5 6 1.5nH
+L4 7 8 1.6nH
 K12 L1 L2 0.40
 K13 L1 L3 0.18
 K14 L1 L4 0.06
 K23 L2 L3 0.15
 K24 L2 L4 0.05
-K35 L3 L5 0.03
-C1 SW1 SW2 12.5fF
-C2 PWM_HS1 CS_P 4.0f
-C3 SW1 CS_N 3.2f
-C4 CS_P CS_N 6.5fF
-Cg1 SW1 0 120fF
-Cg2 SW2 gnd! 118f
-Cg3 CS_P 0 40fF
-Cg4 CS_N AGND 42f
-R1 SW1 VOUT 0.02`;
+C1 2 4 12.5fF
+C2 1 5 4.0f
+C3 2 6 3.2f
+C4 5 6 6.5fF
+Cg1 2 0 120fF
+Cg2 4 0 118f
+Cg3 5 0 40fF
+Cg4 6 0 42f
+R1 2 4 0.02
+.ENDS`;
 
 /* ===== Source .cir window (5-line window, click-to-zoom) ===== */
 function buildSourceViewer(raw){
@@ -565,6 +592,7 @@ function buildTables(res){
   var note=document.getElementById('parseNote');
   note.style.display='';
   note.innerHTML='✔ Parsed: <b>'+res.counts.L+'</b> L, <b>'+res.counts.K+'</b> K, <b>'+res.counts.C+'</b> C, <b>'+res.counts.R+'</b> R.'+
+    (res.nodesMapped?(' &nbsp;🔤 Ansoft header: <b>'+res.nodesMapped+'</b> node name(s) '+(res.translated?'translated (node #→name)':'found — <i>translation off</i>')+'.'):'')+
     (res.unparsed.length?(' &nbsp;⚠ '+res.unparsed.length+' line(s) not in L/K/C/R categories were skipped.'):'')+
     ' &nbsp;Assumptions: mutual inductance M = k·√(Lₐ·L_b); ground nets = <code class="k">'+esc(document.getElementById('gnd').value)+'</code> (edit &amp; re-parse to change).';
   sum.scrollIntoView({behavior:'smooth',block:'start'});
@@ -574,7 +602,8 @@ function tile(n,l){return '<div class="tile"><div class="n">'+n+'</div><div clas
 function doParse(text){
   if(!text||!text.trim()){toast('No netlist text — drop a file, paste, or load the sample.');return;}
   var gnd=document.getElementById('gnd').value.split(',').map(function(s){return s.trim();}).filter(Boolean);
-  var res=CIR.parse(text,{groundNets:gnd});
+  var translate=document.getElementById('xlate').checked;
+  var res=CIR.parse(text,{groundNets:gnd,translate:translate});
   buildTables(res);
 }
 
@@ -587,6 +616,7 @@ drop.ondragleave=function(){drop.classList.remove('hover');};
 drop.ondrop=function(e){e.preventDefault();drop.classList.remove('hover');var f=e.dataTransfer.files[0];if(!f)return;var rd=new FileReader();rd.onload=function(){paste.value=rd.result;doParse(rd.result);};rd.readAsText(f);};
 document.getElementById('parseBtn').onclick=function(){doParse(paste.value);};
 document.getElementById('sampleBtn').onclick=function(){paste.value=SAMPLE;doParse(SAMPLE);};
+document.getElementById('xlate').onchange=function(){if(paste.value.trim())doParse(paste.value);};
 </script>
 </body>
 </html>
